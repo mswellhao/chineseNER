@@ -3,6 +3,9 @@ import argparse
 import sys
 import myio
 from LSTM import LSTMbaseline
+from regLSTM import regLSTM
+
+
 import json
 
 def main(args):
@@ -30,9 +33,7 @@ def main(args):
 			loaded_args = loaded_model["args"]
 			args.net_size = loaded_args.net_size
 			args.model_type = loaded_args.model_type
-			args.second_layer= loaded_args.second_layer
-
-			print "model  size :  "+str(args.net_size) + " ;  model  type  :  "+ args.model_type + " ;  model second layer type  :  "+ args.second_layer	
+			args.second_layer= loaded_args.second_layer	
 			
 			print "loaded model training  args : "+str(loaded_args)
 
@@ -44,7 +45,12 @@ def main(args):
 		devdata = myio.create_labled_data(args.dev, embDic, tagDic)
 		testdata = myio.create_labled_data(args.test, embDic, tagDic)
 		
-		model = LSTMbaseline(args, embMatrix, embDic, tagDic, pre_weight)
+		if args.model_type == "LSTMbaseline":
+			model = LSTMbaseline(args, embMatrix, embDic, tagDic, pre_weight)
+		elif args.model_type == "regLSTM":
+			model = regLSTM(args, embMatrix, embDic, tagDic, pre_weight)
+		print "model  size :  "+str(args.net_size) + " ;  model  type  :  "+ args.model_type + " ;  model second layer type  :  "+ args.second_layer
+
 		model.train_ready()
 		model.evaluate_ready()
 		model.train(traindata, devdata, testdata)
@@ -64,7 +70,12 @@ def main(args):
 		tagDic = loaded_model["tagDic"]
 		print "model tag  dic ................. "+str(tagDic)
 		pre_weight = loaded_model["model_weight"]
-		model = LSTMbaseline(loaded_args, embMatrix, embDic, tagDic, pre_weight)
+
+		if args.model_type == "LSTMbaseline":
+			model = LSTMbaseline(args, embMatrix, embDic, tagDic, pre_weight)
+		elif args.model_type == "regLSTM":
+			model = regLSTM(args, embMatrix, embDic, tagDic, pre_weight)
+
 		model.evaluate_ready()
 
 		evadata = myio.create_labled_data(args.eva, embDic, tagDic)
@@ -80,7 +91,6 @@ def main(args):
 
 	elif args.action == "extract":
 
-		
 		print "loaing model............"
 		loaded_model = pickle.load(open(args.model))
 		if "embMatrix" in loaded_model:
@@ -93,7 +103,11 @@ def main(args):
 		pre_weight = loaded_model["model_weight"]
 
 
-		model = LSTMbaseline(loaded_args, embMatrix, embDic, tagDic, pre_weight)
+		if args.model_type == "LSTMbaseline":
+			model = LSTMbaseline(args, embMatrix, embDic, tagDic, pre_weight)
+		elif args.model_type == "regLSTM":
+			model = regLSTM(args, embMatrix, embDic, tagDic, pre_weight)
+
 		model.evaluate_ready()
 
 
@@ -102,8 +116,6 @@ def main(args):
 
 		outputfile = args.output
 		json.dump(ens, open(outputfile,"w+"))
-
-		
 
 
 
@@ -158,7 +170,7 @@ if __name__ == "__main__":
 
 	argparser.add_argument("--embeddings",
 		type = str,
-		default = "vector/baidu_charvetors_150"
+		default = "vector/baidu_charvectors_150"
 		)
 
 	argparser.add_argument("--model_type", 
@@ -175,6 +187,11 @@ if __name__ == "__main__":
 	argparser.add_argument("--second_layer",
 		type = str,
 		default = "forward"
+		)
+
+	argparser.add_argument("--CRF",
+		type = bool,
+		default = False
 		)
 
 	# adopt sequence based learning or token based learning
@@ -247,6 +264,28 @@ if __name__ == "__main__":
 		type = int,
 		default = 10
 		)
+	
+	argparser.add_argument("--lowreg_weight",
+		type = float,
+		default = 0.1
+		)
+
+	argparser.add_argument("--highreg_weight",
+		type = float,
+		default = 0.1,
+		)
+
+	argparser.add_argument("--variance",
+		type = float,
+		default = 0.01
+		)
+
+	argparser.add_argument("--nc",
+		type = int,
+		default = 3
+		)
+
+
 
 	args = argparser.parse_args()
 	main(args)

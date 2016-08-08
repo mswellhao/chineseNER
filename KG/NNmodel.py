@@ -10,6 +10,12 @@ from util import *
 class NNmodel:
 
     def __init__(self, wdecay, opt, wbound, gradbound, mweight = 0.9, lrate = 0.01):
+        def f_softplus(x): return T.log(T.exp(x) + 1)# - np.log(2)
+        def f_rectlin(x): return x*(x>0)
+        def f_rectlin2(x): return x*(x>0) + 0.01 * x
+        def f_identity(x):return x
+        self.nonlinear = {'tanh': T.tanh, 'sigmoid': T.nnet.sigmoid, 'softplus': f_softplus, 'rectlin': f_rectlin, 'rectlin2': f_rectlin2,'identity':f_identity}
+        
         self.wdecay = wdecay
         self.mweight = shared32(mweight)
         self.lrate = shared32(lrate)
@@ -134,7 +140,7 @@ class NNmodel:
         return final
 
 
-    def softmaxLayer(self, x ,w, layerid,size):
+    def softmaxLayer(self, x, w, layerid, size):
         sw = self.set_para(w,"w"+layerid,shared32(1./np.sqrt(size[0])*np.random.randn(size[0],size[1])))
         sb = self.set_para(w,"b"+layerid,shared32(np.random.randn(size[1])))
 
@@ -176,7 +182,7 @@ class NNmodel:
             assert len(w) == 1
             def bound(iw):
                 norm = T.sum(iw**2, 0)
-            	x = T.sqrt(wbound/norm)
+                x = T.sqrt(wbound/norm)
                 wscale = (x < 1)*(x-1)+1
                 return iw*wscale
         else:
@@ -209,15 +215,64 @@ class NNmodel:
             for i in xrange(len(gw)):
                 new_w = w[i] - lrate*gw[i]*scale
                 updates[w[i]] = new_w
-	    
+        
 
         return collections.OrderedDict(updates)
 
 
-    def decode(self,scores, trans,top_n = 1):
-       
-        assert len(trans) == self.net_size[-1] + 1
+    def log_sum_exp(self, x):
+        xmax = x.max(axis = -1, keepdims = True)
+        xmax_ = x.max(axis = -1)
 
+        return xmax_ + T.log(T.sum(T.exp(x-xmax), axis = -1))
+
+    def CRFLayer(self, scores, trans, viterbi = True, batch = False):
+
+        if batch:
+             batch_num = scores.shape[1]
+             trans = T.tile(trans, [batch_num,1,1])
+        def recurrence(current_score, prev, trans):
+            if batch:
+                current_score = current_score.dimshuffle(0,1,'x')
+                prev = prev.dimshuffle(0,'x',1)
+                temp = trans + current_score 
+                cans = temp + prev
+
+            else:
+                current_score = current_score.dimshuffle(0,'x')
+                prev = prev.dimshuffle('x',0)
+                cans = trans + current_score  + prev
+            if viterbi:
+                new_prev = T.max(cans, axis = -1)
+                max_path = T.cast(T.argmax(cans, axis = -1), 'int32')
+                return new_prev, max_path
+            else:
+                # compute sum of all path score
+                new_prev = self.log_sum_exp(cans)
+                return new_prev
+
+        result, _ = theano.scan(fn = recurrence, outputs_info = (scores[0], None) if viterbi else scores[0], sequences = scores[1:], non_sequences = trans)
+
+        if viterbi:
+            max_path_index, _ = theano.scan(fn = lambda current_mark, prev_index: current_mark[prev_index],
+             outputs_info = T.cast(T.argmax(result[0][-1]), 'int32'), sequences = result[1][::-1])
+            
+            max_path_index = T.concatenate([max_path_index[::-1], [T.cast(T.argmax(result[0][-1]), 'int32')]])
+
+            return max_path_index, T.max(result[0][-1])
+
+        else:
+            sumscore = self.log_sum_exp(result[-1])
+            return sumscore
+            # score sum of all possible path in a sequence or a batch of sequences
+
+
+    def decode(self,scores, trans,top_n = 1):
+        #input : scores (n_seq, n_tags),
+        #         trans(n_tags, n_tags),
+        #         top_n( return top n decode sequences)
+        #output: a list of tuples consisted of tage sequence (sequence) and score (exp)s
+       
         road = []
         i = 0
         while i < len(scores):
@@ -242,7 +297,6 @@ class NNmodel:
                     for j in range(len(road[-1])):
                         for k in range(len(road[-1][j])):
                             candidates.append((j,k,road[-1][j][k][2] + logp[j][l]))
-
 
                     candidates.sort(lambda x,y:cmp(y[2],x[2]))
                     node.append(candidates[0:top_n])
@@ -275,19 +329,9 @@ class NNmodel:
             result.append((sequence, can[i][2]))
 
 
-        return  result  # a list of tuples consisted with tage sequence (sequence) and score (exp)s
+        return  result  
 
-    def dumpmodel(self, fname):
-        model = {}
-        model["args"] = self.args
-        if not self.fix_emb:
-            model["embMatrix"] = self.embMatrix.get_value()
-            model["embDic"] = self.embDic
-        model["model_weight"] = self.w
-        model["tagDic"] = self.tagDic
-  
-        pickle.dump(model, open(fname, 'w+'))
-
+   
 
     def l2reg(self,w,wdecay): # only deal with laywise weights
         reg = 0
@@ -308,6 +352,5 @@ class NNmodel:
         return self.lrate.get_value()
     def set_lrate(self,value):
         self.lrate.set_value(value)
-
 
 
