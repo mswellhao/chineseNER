@@ -41,10 +41,10 @@ Input files for the training script have to follow the same format as the file [
 
 ##Key classes and Methods
 ---
-###class **NNmodel** (NNmodel.py)###
+class **NNmodel** (NNmodel.py)
 This class is composed of general methods used in neural network based models , including some essential building block like softmaxLayer, Bidirectional LSTMLayer and different learning methods like SGD and AdaGrad
 
-###class **LSTMbaseline** (LSTM.py) ###
+class **LSTMbaseline** (LSTM.py)
 This class is the LSTM model used to do Named Entity Recognition. 
 
 - The method **train_ready** builds the computation graph and generates callable function that would be used in training.
