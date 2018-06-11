@@ -4,8 +4,6 @@ import sys
 import myio
 from LSTM import LSTMbaseline
 from regLSTM import regLSTM
-
-
 import json
 
 def main(args):
